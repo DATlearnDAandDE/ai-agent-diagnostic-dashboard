@@ -9,7 +9,7 @@
 
 ## 📊 Tính năng
 
-Dashboard phân tích theo **4 cấp độ** (4-Level Analytics Framework):
+Dashboard **chính** là file `validate_dashboard.py` — phân tích theo **4 cấp độ** (4-Level Analytics Framework):
 
 | Tab | Cấp độ | Nội dung |
 |-----|--------|----------|
@@ -33,7 +33,7 @@ source .venv/bin/activate  # Linux/Mac
 # Cài đặt dependencies
 pip install -r requirements.txt
 
-# Chạy app
+# Chạy dashboard chính
 streamlit run validate_dashboard.py
 ```
 
@@ -41,19 +41,30 @@ streamlit run validate_dashboard.py
 
 ```
 code/
-├── validate_dashboard.py       # Main app
-├── processed_agentic_traces.csv # Dữ liệu
-├── requirements.txt
+├── validate_dashboard.py        # 🎯 DASHBOARD CHÍNH (4 tabs, 14+ biểu đồ)
+├── app_dashboard.py             # Dashboard phụ — Bento Grid tóm tắt
+├── processed_agentic_traces.csv # Dữ liệu Telemetry
+├── requirements.txt             # Python dependencies
 └── .streamlit/
-    └── config.toml
+    └── config.toml              # Cấu hình Streamlit
 ```
+
+## ☁️ Deploy trên Streamlit Community Cloud
+
+1. Push repo lên GitHub
+2. Vào [share.streamlit.io](https://share.streamlit.io) → **New app**
+3. Điền:
+   - **Repository**: `<github-username>/<repo-name>`
+   - **Branch**: `main`
+   - **Main file path**: `validate_dashboard.py`  ← **File chính**
+4. Nhấn **Deploy!**
 
 ## 🛠 Tech Stack
 
 - **Frontend**: Streamlit 1.59
-- **Visualization**: Plotly 6.9 (Bento Grid Layout)
-- **Data**: Pandas, NumPy, SciPy
-- **Design**: Custom CSS — Glassmorphism + Bento Grid
+- **Visualization**: Plotly 6.9 (Bento Grid Layout + 4 Analytical Tabs)
+- **Data**: Pandas 3.0, NumPy 2.4, SciPy
+- **Design**: Custom CSS — Glassmorphism + Bento Grid (Light Theme)
 
 ---
 *Data Source: OpenTelemetry + LangSmith | Q2-Q3 2026 | Confidential*
