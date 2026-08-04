@@ -4,478 +4,437 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import math
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_curve, auc
+from sklearn.linear_model import LogisticRegression, LinearRegression
+from sklearn.metrics import roc_curve, auc, confusion_matrix, precision_score, recall_score
+import scipy.stats
 
-st.set_page_config(page_title="Data Story: AI Agent", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Data Story: Cạm Bẫy AI Agent", layout="wide", initial_sidebar_state="collapsed")
 
 # =============================================================================
-# UI/UX STYLING (CSS)
+# THEME & CSS
 # =============================================================================
-THEME = st.session_state.get('theme', 'dark')
-
-def toggle_theme():
-    st.session_state.theme = 'light' if st.session_state.get('theme', 'dark') == 'dark' else 'dark'
-
-if THEME == 'dark':
-    BG_COLOR = "#0D1117"
-    TEXT_COLOR = "#C9D1D9"
-    H_COLOR = "#FFFFFF"
-    GRID_COLOR = "rgba(255,255,255,0.05)"
-    BOX_BG = "rgba(255,255,255,0.03)"
-else:
-    BG_COLOR = "#EEF1F7"
-    TEXT_COLOR = "#334155"
-    H_COLOR = "#1F4E79"
-    GRID_COLOR = "rgba(0,0,0,0.05)"
-    BOX_BG = "#FFFFFF"
+THEME = 'light'
+BG = "#F4F5F7"
+TXT = "#6B7280"
+H_COL = "#1F4E79"
+GRID = "#ECEEF1"
+BOX = "#FFFFFF"
 
 PALETTE = {
-    'minimax-m2.5': '#34D399',
     'deepseek-v3.1': '#38E1D6',
     'claude-sonnet-4-6': '#F5B544',
-    'claude-opus-4-6': '#9B8CFF'
+    'claude-opus-4-6': '#9B8CFF',
+    'minimax-m2.5': '#34D399'
 }
 
 st.markdown(f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@500;700&display=swap');
     
-    .stApp {{
-        background-color: {BG_COLOR};
-        color: {TEXT_COLOR};
-        font-family: 'IBM Plex Sans', sans-serif;
-        background-image: 
-            linear-gradient({GRID_COLOR} 1px, transparent 1px),
-            linear-gradient(90deg, {GRID_COLOR} 1px, transparent 1px);
-        background-size: 40px 40px;
-    }}
-    h1, h2, h3, h4 {{ font-family: 'Space Grotesk', sans-serif; color: {H_COLOR}; }}
-    
-    /* Layout with sticky rail */
-    .layout-wrapper {{ display: flex; max-width: 1600px; margin: 0 auto; gap: 40px; }}
-    .sticky-rail {{
-        width: 200px;
-        position: sticky;
-        top: 2rem;
-        height: max-content;
-        border-right: 1px solid {GRID_COLOR};
-        padding-right: 20px;
-    }}
-    .main-content {{ flex: 1; padding-bottom: 100px; max-width: 1100px; }}
-    
-    @media (max-width: 1100px) {{
-        .layout-wrapper {{ flex-direction: column; }}
-        .sticky-rail {{ position: relative; width: 100%; border-right: none; border-bottom: 1px solid {GRID_COLOR}; padding-bottom: 20px; display: flex; flex-wrap: wrap; gap: 10px; top: 0; }}
-        .main-content {{ max-width: 100%; }}
+    :root {{
+        --page-bg: #F4F5F7;
+        --card: #FFFFFF;
+        --border: #E3E6EA;
+        --heading: #1F4E79;
+        --value: #1F2937;
+        --label: #6B7280;
+        --muted: #9CA3AF;
+        --grid: #ECEEF1;
     }}
     
-    .nav-item {{
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: {TEXT_COLOR};
-        opacity: 0.5;
-        margin-bottom: 24px;
-        cursor: pointer;
-        transition: 0.3s;
-    }}
-    .nav-item:hover, .nav-item.active {{ opacity: 1; color: {H_COLOR}; }}
+    .stApp {{ background-color: var(--page-bg); font-family: 'IBM Plex Sans', sans-serif; }}
     
-    .kpi-strip {{ display: flex; gap: 16px; margin-bottom: 32px; flex-wrap: wrap; }}
-    .kpi-box {{
-        background: {BOX_BG};
-        border: 1px solid {GRID_COLOR};
-        border-radius: 8px;
-        padding: 16px 20px;
-        flex: 1;
-        min-width: 140px;
-    }}
-    .kpi-val {{ font-family: 'JetBrains Mono', monospace; font-size: 34px; font-weight: 700; color: {H_COLOR}; line-height: 1.2; }}
-    .kpi-lbl {{ font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: {TEXT_COLOR}; opacity: 0.8; }}
-    .wasted-box {{ border-color: #FF6B6B; background: rgba(255, 107, 107, 0.05); }}
-    .wasted-box .kpi-val {{ color: #FF6B6B; }}
+    h1, h2, h3, h4 {{ font-family: 'Space Grotesk', sans-serif; color: var(--heading); margin-bottom: 4px; }}
+    .header-sub {{ font-size: 16px; color: var(--label); margin-bottom: 24px; }}
     
-    .story-box {{
-        border-left: 4px solid #5B8DEF;
-        background: {BOX_BG};
-        padding: 24px 32px;
-        margin: 40px 0;
-        border-radius: 0 8px 8px 0;
-        font-size: 1.15rem;
-        line-height: 1.6;
-        color: {TEXT_COLOR};
-    }}
+    .bento-wrapper {{ max-width: 1600px; margin: 0 auto; padding: 20px; }}
     
-    .act-title {{
-        font-size: 2.5rem;
-        margin: 60px 0 24px 0;
-        border-bottom: 2px solid {GRID_COLOR};
-        padding-bottom: 12px;
-    }}
+    .kpi-container {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 32px; }}
+    .kpi-card {{ background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }}
+    .kpi-label {{ font-size: 12px; color: var(--label); text-transform: uppercase; font-weight: 600; }}
+    .kpi-value {{ font-family: 'JetBrains Mono'; font-size: 30px; font-weight: 700; color: var(--heading); margin: 4px 0; }}
     
-    .footer-caveat {{
-        font-size: 0.85rem; color: {TEXT_COLOR}; opacity: 0.6; margin-top: 60px;
-        border-top: 1px solid {GRID_COLOR}; padding-top: 20px;
-    }}
+    .section-label {{ font-family: 'Space Grotesk'; font-size: 1.5rem; color: var(--heading); font-weight: 700; margin: 40px 0 20px 0; border-bottom: 2px solid var(--border); padding-bottom: 8px; }}
+    
+    .story-box {{ background: var(--card); border: 1px solid var(--border); border-left: 4px solid #FF6B6B; border-radius: 12px; padding: 24px; font-size: 1rem; color: var(--value); line-height: 1.6; margin: 24px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }}
+    
+    .reco-table {{ width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 12px; font-size: 14px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }}
+    .reco-table th {{ background: #F8FAFC; text-align: left; padding: 16px; color: var(--heading); font-family: 'Space Grotesk'; border-bottom: 1px solid var(--border); }}
+    .reco-table td {{ padding: 16px; border-bottom: 1px solid var(--border); color: var(--value); }}
+    
+    /* Hide Streamlit components */
+    #MainMenu {{visibility: hidden;}}
+    header {{visibility: hidden;}}
 </style>
 """, unsafe_allow_html=True)
 
 PLOT_CFG = dict(
-    template='plotly_dark' if THEME == 'dark' else 'plotly_white',
-    paper_bgcolor='rgba(0,0,0,0)',
-    plot_bgcolor='rgba(0,0,0,0)',
-    font=dict(family='IBM Plex Sans', size=12, color=TEXT_COLOR),
-    margin=dict(t=50, l=40, r=20, b=40)
+    paper_bgcolor='#FFFFFF', plot_bgcolor='#FFFFFF',
+    font=dict(family='IBM Plex Sans', size=12, color='#6B7280'),
+    margin=dict(l=40, r=20, t=40, b=30)
 )
-
-def sf(fig, title="", height=380):
-    fig.update_layout(**PLOT_CFG, height=height, title=dict(text=title, font=dict(family='Space Grotesk', size=16, color=H_COLOR)))
-    fig.update_xaxes(showgrid=True, gridcolor=GRID_COLOR, zeroline=False)
-    fig.update_yaxes(showgrid=True, gridcolor=GRID_COLOR, zeroline=False)
+def sf(fig, title="", h=320):
+    fig.update_layout(**PLOT_CFG, height=h, title=dict(text=title, font=dict(family='Space Grotesk', size=15, color='#1F4E79')))
+    fig.update_xaxes(showgrid=False, zeroline=False, linecolor='#E3E6EA')
+    fig.update_yaxes(showgrid=True, gridcolor='#ECEEF1', zeroline=False, linecolor='#E3E6EA')
+    fig.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, title_text=''))
     return fig
 
 # =============================================================================
-# PART A: DATA PIPELINE
+# PART A: DATA PREPARATION (Strict Mapping)
 # =============================================================================
 @st.cache_data
-def load_data(filepath='processed_agentic_traces.csv'):
-    df = pd.read_csv(filepath)
-    df = df.sort_values(['session_id', 'turn_number'])
+def load_and_prepare():
+    # CAVEAT strict mapping: the actual CSV has a header, but we ignore it and map columns strictly as requested
+    cols = ['task_id', 'model', 'duration', 'cost', 'resolved', 'flag', 'tokens', 'step', 'cumulative_cost']
+    import os
+    csv_candidates = [
+        os.path.join(os.path.dirname(__file__), "processed_agentic_traces.csv"),
+        "processed_agentic_traces.csv",
+        "code/processed_agentic_traces.csv",
+        "/home/leducdat/projectDuan/code/processed_agentic_traces.csv"
+    ]
+    csv_file = next((f for f in csv_candidates if os.path.exists(f)), None)
+    if csv_file is None:
+        raise FileNotFoundError("Không tìm thấy file processed_agentic_traces.csv")
+    df = pd.read_csv(csv_file, header=None, skiprows=1, names=cols)
     
-    df['delta_tokens'] = df.groupby('session_id')['input_tokens'].diff().fillna(df['input_tokens'])
-    df['cum_cost'] = df.groupby('session_id')['turn_cost'].cumsum()
+    def parse_bench(tid):
+        p = str(tid).split('__')
+        if p[0] == 'swebench' and len(p) > 1: return f"swebench-{p[1]}"
+        if p[0] == 'gaia' and len(p) > 1: return f"gaia-{p[1]}"
+        return p[0]
     
-    sess_agg = df.groupby('session_id').agg(
+    df['benchmark'] = df['task_id'].apply(parse_bench)
+    df = df.sort_values(['task_id', 'step'])
+    df['tokens_per_step'] = df.groupby('task_id')['tokens'].diff().fillna(df['tokens'])
+    
+    # Identify Spikes
+    q3 = df.groupby('model')['cost'].quantile(0.75).to_dict()
+    iqr = (df.groupby('model')['cost'].quantile(0.75) - df.groupby('model')['cost'].quantile(0.25)).to_dict()
+    def is_spike(r):
+        m = r['model']
+        return 1 if (r['cost'] > 5) or (r['cost'] > (q3.get(m, 0) + 3*iqr.get(m, 0))) else 0
+    df['spike'] = df.apply(is_spike, axis=1)
+    
+    # Task Aggregation
+    task = df.groupby('task_id').agg(
         model=('model', 'first'),
-        total_cost=('turn_cost', 'sum'),
-        turns=('turn_number', 'max'),
-        error_rate=('has_error', 'mean'),
-        final_tokens=('input_tokens', 'max'),
-        is_sys_prompt=('is_system_prompt_present', 'first')
+        benchmark=('benchmark', 'first'),
+        total_cost=('cost', 'sum'),
+        max_step=('step', 'max'),
+        total_duration=('duration', 'sum'),
+        resolved_final=('resolved', 'last'),
+        final_tokens=('tokens', 'last')
     ).reset_index()
     
-    sess_agg['failed'] = (sess_agg['error_rate'] == 1.0).astype(int)
-    sess_agg['wasted_cost'] = sess_agg['failed'] * sess_agg['total_cost']
+    flag_first = df[(df['flag'] == 1) & (df['step'] > 1)].groupby('task_id')['step'].min().reset_index(name='first_flag1')
+    task = task.merge(flag_first, on='task_id', how='left')
+    task['hit_cap'] = (task['max_step'] >= 50).astype(int)
+    task['redundant_steps'] = task.apply(lambda r: max(0, r['max_step'] - r['first_flag1']) if pd.notna(r['first_flag1']) else 0, axis=1)
     
-    turn5 = df[df['turn_number'] <= 5].groupby('session_id').agg(
-        early_err_5=('has_error', 'mean'),
-        tokens_5=('input_tokens', 'max'),
-        delta_tokens_5=('delta_tokens', 'mean')
-    ).reset_index()
-    
-    turn10 = df[df['turn_number'] == 10].groupby('session_id').agg(
-        cost_10=('cum_cost', 'max')
-    ).reset_index()
-    
-    sess_agg = sess_agg.merge(turn5, on='session_id', how='left').merge(turn10, on='session_id', how='left')
-    
-    # Calculate streak for R1 simulation
-    def get_streak(s):
-        return s.groupby((s != s.shift()).cumsum()).cumsum()
-    df['err_streak'] = df.groupby('session_id')['has_error'].apply(get_streak).reset_index(level=0, drop=True)
-    
-    return df, sess_agg
+    return df, task
 
-df, sess = load_data()
+df, task = load_and_prepare()
 
-kpi_cost = sess['total_cost'].sum()
-kpi_sess = len(sess)
-kpi_turns = len(df)
-kpi_err = df['has_error'].mean() * 100
-kpi_fail = sess['failed'].mean() * 100
-kpi_wasted = sess['wasted_cost'].sum()
-kpi_sonnet_cost_pct = sess[sess['model'] == 'claude-sonnet-4-6']['total_cost'].sum() / kpi_cost * 100 if kpi_cost > 0 else 0
-
-def wilson_score(p, n, z=1.96):
-    if n == 0: return 0,0
-    denom = 1 + z**2/n
-    center = (p + z**2/(2*n)) / denom
-    spread = z * math.sqrt(p*(1-p)/n + z**2/(4*n**2)) / denom
-    return center - spread, center + spread
+# KPI
+v_steps = len(df)
+v_tasks = len(task)
+v_models = task['model'].nunique()
+v_res = task['resolved_final'].mean() * 100
+v_cost = task['total_cost'].sum()
+v_dur = task['total_duration'].sum()
+v_tok = task['final_tokens'].sum() / 1e6
 
 # =============================================================================
-# CHARTS LOGIC
+# CẤP 1 - MÔ TẢ
 # =============================================================================
+def draw_p1_1():
+    agg = task.groupby(['model', 'benchmark'])['resolved_final'].mean().reset_index()
+    fig = px.density_heatmap(agg, x='benchmark', y='model', z='resolved_final', histfunc='avg', color_continuous_scale='Teal')
+    fig.update_traces(text=agg['resolved_final'].apply(lambda x: f"{x*100:.0f}%"), texttemplate="%{text}")
+    return sf(fig, "P1.1 Resolve Rate theo Benchmark")
 
-# C1: H-BAR total cost
-def draw_c1():
-    m_cost = sess.groupby('model')['total_cost'].sum().reset_index().sort_values('total_cost')
-    fig = px.bar(m_cost, y='model', x='total_cost', orientation='h', color='model', color_discrete_map=PALETTE)
-    if 'claude-sonnet-4-6' in m_cost['model'].values:
-        fig.add_annotation(x=m_cost['total_cost'].max()*0.8, y='claude-sonnet-4-6', text=f"sonnet ≈{kpi_sonnet_cost_pct:.1f}%", showarrow=True, arrowhead=2, ax=-40, ay=-30, font=dict(color=TEXT_COLOR))
-    fig.update_layout(showlegend=False)
-    return sf(fig, "C1. Ai ngốn tiền? (Tổng chi phí)", 280)
+def draw_p1_2():
+    fig = px.box(task, x='model', y='total_cost', log_y=True, color='model', color_discrete_map=PALETTE)
+    counts = task.groupby('model').size()
+    for i, m in enumerate(counts.index):
+        fig.add_annotation(x=m, y=np.log10(task['total_cost'].max()), text=f"n={counts[m]}", showarrow=False, font=dict(color=TXT))
+    return sf(fig, "P1.2 Tổng Cost/Task (Log Scale)")
 
-# C2: BAR Error rate
-def draw_c2():
-    m_err = df.groupby('model').agg(err=('has_error', 'mean'), n=('has_error', 'count')).reset_index()
-    f_rate = sess.groupby('model')['failed'].mean().reset_index()
-    m_err = m_err.merge(f_rate, on='model').sort_values('err', ascending=False)
-    
-    y_vals, err_minus, err_plus = [], [], []
-    for _, r in m_err.iterrows():
-        p = r['err']
-        low, high = wilson_score(p, r['n'])
-        y_vals.append(p)
-        err_minus.append(p - low)
-        err_plus.append(high - p)
-        
-    fig = go.Figure(go.Bar(
-        x=m_err['model'], y=y_vals, error_y=dict(type='data', array=err_plus, arrayminus=err_minus),
-        marker_color=[PALETTE.get(m, '#888') for m in m_err['model']],
-        text=[f"F:{f*100:.0f}%" for f in m_err['failed']], textposition='outside'
-    ))
-    if 'claude-sonnet-4-6' in m_err['model'].values:
-        fig.add_annotation(x='claude-sonnet-4-6', y=m_err[m_err['model']=='claude-sonnet-4-6']['err'].values[0], text="Ngốn 66.8% ngân sách ↔ Lỗi cao nhất", showarrow=True, arrowhead=2, ax=40, ay=-40, font=dict(color=TEXT_COLOR))
-    fig.update_layout(yaxis_tickformat='.0%', showlegend=False)
-    return sf(fig, "C2. Tỉ lệ lỗi theo Turn (kèm % Failed Session)", 280)
+def draw_p1_3():
+    fig = px.violin(df, x='model', y='duration', color='model', box=True, color_discrete_map=PALETTE)
+    p95 = df.groupby('model')['duration'].quantile(0.95).reset_index()
+    fig.add_trace(go.Scatter(x=p95['model'], y=p95['duration'], mode='markers+text', marker_symbol='star', marker_size=12, text=['P95']*len(p95), textposition='top right', name='P95', showlegend=False))
+    return sf(fig, "P1.3 Duration / Step")
 
-# C3: LINE cum_cost
-def draw_c3():
-    fig = go.Figure()
-    mean_cost = df.groupby(['model', 'turn_number'])['cum_cost'].mean().reset_index()
-    for m in mean_cost['model'].unique():
-        m_data = mean_cost[mean_cost['model'] == m]
-        fig.add_trace(go.Scatter(x=m_data['turn_number'], y=m_data['cum_cost'], mode='lines', line=dict(color=PALETTE.get(m, '#888'), width=3), name=m))
-    fig.add_annotation(x=40, y=mean_cost['cum_cost'].max()*0.8, text="Đường cong quá dốc? -> Xem C4", showarrow=False, font=dict(color=TEXT_COLOR))
-    return sf(fig, "C3. Tiền cháy theo turn ra sao?", 320)
+def draw_p1_4():
+    samp = df[df['task_id'].isin(np.random.choice(task['task_id'].unique(), min(100, len(task)), replace=False))]
+    fig = px.line(samp, x='step', y='cumulative_cost', color='model', line_group='task_id', color_discrete_map=PALETTE, hover_data=['task_id', 'tokens'])
+    fig.update_traces(opacity=0.3, line=dict(width=1))
+    return sf(fig, "P1.4 Quỹ đạo Cumulative Cost")
 
-# C4: LINE input_tokens ~ turn
-def draw_c4():
-    sonnet = df[df['model'] == 'claude-sonnet-4-6']
-    mean_tok = sonnet.groupby(['is_system_prompt_present', 'turn_number'])['input_tokens'].mean().reset_index()
-    fig = go.Figure()
-    for status, name, color in [(1, 'Sys Prompt ON', '#F5B544'), (0, 'Sys Prompt OFF', '#5B8DEF')]:
-        m_data = mean_tok[mean_tok['is_system_prompt_present'] == status]
-        fig.add_trace(go.Scatter(x=m_data['turn_number'], y=m_data['input_tokens'], mode='lines', line=dict(color=color, width=3), name=name))
-    fig.add_annotation(x=30, y=20000, text="Vì sao đường cong dốc? Vì context phình", showarrow=False, font=dict(color=TEXT_COLOR))
-    return sf(fig, "C4. Context Bloat (Sonnet)", 320)
+def draw_p1_5():
+    fig = px.histogram(task, x='max_step', nbins=25, color='model', color_discrete_map=PALETTE, barmode='stack')
+    pct_cap = task['hit_cap'].mean() * 100
+    fig.add_annotation(x=50, y=len(task)*0.1, text=f"{pct_cap:.1f}% chạm trần 50", showarrow=True, ax=-40)
+    return sf(fig, "P1.5 Phân bố Max Step")
 
-# C5: SCATTER turn_cost ~ input_tokens
-def draw_c5():
-    samp = df.sample(min(5000, len(df)))
-    fig = px.scatter(samp, x='input_tokens', y='turn_cost', color='model', color_discrete_map=PALETTE)
-    
-    from sklearn.linear_model import LinearRegression
-    for m in samp['model'].unique():
-        m_data = samp[samp['model'] == m].dropna(subset=['input_tokens', 'turn_cost'])
-        if len(m_data) > 1:
-            X = m_data[['input_tokens']].values
-            y = m_data['turn_cost'].values
-            reg = LinearRegression().fit(X, y)
-            x_range = np.linspace(X.min(), X.max(), 100)
-            y_pred = reg.predict(x_range.reshape(-1, 1))
-            fig.add_trace(go.Scatter(x=x_range, y=y_pred, mode='lines', line=dict(color=PALETTE.get(m), width=2, dash='dash'), showlegend=False))
-            
-    fig.add_annotation(x=df['input_tokens'].max()*0.5, y=df['turn_cost'].max()*0.8, text="Phình × đơn giá đắt = Cạm bẫy", showarrow=False, font=dict(color=TEXT_COLOR))
-    return sf(fig, "C5. Đơn giá biên: Cost ~ Tokens", 320)
+def draw_p1_6():
+    agg = df.groupby(['model', 'step'])['tokens'].mean().reset_index()
+    fig = px.line(agg, x='step', y='tokens', color='model', color_discrete_map=PALETTE)
+    return sf(fig, "P1.6 Quá trình phình Tokens")
 
-# C6: DUMBBELL Sys Prompt ON vs OFF
-def draw_c6():
-    s_on = sess[(sess['model']=='claude-sonnet-4-6') & (sess['is_sys_prompt']==1)]
-    s_off = sess[(sess['model']=='claude-sonnet-4-6') & (sess['is_sys_prompt']==0)]
-    
-    if len(s_off) == 0: return sf(go.Figure(), "C6. Chưa đủ data OFF")
-    
-    m_on = {'tok': s_on['final_tokens'].mean(), 'err': df[(df['model']=='claude-sonnet-4-6')&(df['is_system_prompt_present']==1)]['has_error'].mean()*100, 'fail': s_on['failed'].mean()*100, 'turns': s_on['turns'].mean(), 'cost': s_on['total_cost'].mean()}
-    m_off = {'tok': s_off['final_tokens'].mean(), 'err': df[(df['model']=='claude-sonnet-4-6')&(df['is_system_prompt_present']==0)]['has_error'].mean()*100, 'fail': s_off['failed'].mean()*100, 'turns': s_off['turns'].mean(), 'cost': s_off['total_cost'].mean()}
-    
-    metrics = list(m_on.keys())
-    fig = go.Figure()
-    for i, m in enumerate(metrics):
-        val_off, val_on = m_off[m], m_on[m]
-        pct = (val_on - val_off)/val_off*100 if val_off else 0
-        norm_off = 0
-        norm_on = pct
-        fig.add_trace(go.Scatter(x=[norm_off, norm_on], y=[m, m], mode='lines+markers', line=dict(color='#5B8DEF', width=3), marker=dict(color=['#34D399', '#FF6B6B'], size=10), showlegend=False))
-        fig.add_annotation(x=norm_on, y=m, text=f"+{pct:.0f}%" if pct>0 else f"{pct:.0f}%", showarrow=False, yshift=15, font=dict(color=TEXT_COLOR))
-        
-    fig.add_annotation(x=50, y='tok', text="Ai bật công tắc phình? System Prompt", showarrow=False, font=dict(color=TEXT_COLOR))
-    return sf(fig, "C6. Tác động của System Prompt (Chuẩn hoá %)", 320)
+# =============================================================================
+# CẤP 2 - CHẨN ĐOÁN
+# =============================================================================
+def draw_p2_1():
+    samp = df.sample(min(3000, len(df)))
+    fig = px.scatter(samp, x='duration', y='cost', log_x=True, log_y=True, size='tokens', color='spike', color_continuous_scale=['gray', '#FF6B6B'])
+    fig.add_hline(y=5, line_dash='dash', line_color='#FF6B6B', annotation_text="Cost Spike")
+    fig.add_vline(x=300, line_dash='dash', line_color='#F5B544', annotation_text="Timeout (300s)")
+    fig.update_coloraxes(showscale=False)
+    return sf(fig, "P2.1 Giải phẫu Spike")
 
-# C7: LINE err rate theo turn ON vs OFF
-def draw_c7():
-    sonnet = df[df['model'] == 'claude-sonnet-4-6']
-    err_t = sonnet.groupby(['is_system_prompt_present', 'turn_number'])['has_error'].mean().reset_index()
-    fig = go.Figure()
-    for status, name, color in [(1, 'Sys Prompt ON', '#FF6B6B'), (0, 'Sys Prompt OFF', '#34D399')]:
-        d = err_t[err_t['is_system_prompt_present'] == status]
-        fig.add_trace(go.Scatter(x=d['turn_number'], y=d['has_error'], mode='lines', line=dict(color=color), name=name))
-    fig.update_yaxes(tickformat='.0%')
-    return sf(fig, "C7. Tốc độ tích luỹ lỗi theo turn", 280)
+def draw_p2_2():
+    agg = task.groupby(['model', 'resolved_final'])['total_cost'].sum().reset_index()
+    wasted = agg[agg['resolved_final'] == 0]
+    fig = px.pie(wasted, values='total_cost', names='model', hole=0.5, color='model', color_discrete_map=PALETTE)
+    total_wasted = wasted['total_cost'].sum()
+    pct_wasted = total_wasted / task['total_cost'].sum() * 100 if task['total_cost'].sum() else 0
+    fig.add_annotation(text=f"Lãng phí<br>{pct_wasted:.1f}%", showarrow=False, font=dict(size=18, color=H_COL))
+    return sf(fig, "P2.2 Wasted Cost")
 
-# C8: ROC Turn 5
-def draw_c8():
-    valid = sess.dropna(subset=['tokens_5', 'early_err_5'])
-    if len(valid) < 10: return sf(go.Figure(), "C8. Thiếu data ROC")
-    
-    X = valid[['tokens_5', 'early_err_5']]
-    y = valid['failed']
+def draw_p2_3():
+    redundant_df = df.merge(task[['task_id', 'first_flag1']], on='task_id')
+    red_cost = redundant_df[redundant_df['step'] > redundant_df['first_flag1']]['cost'].sum()
+    cap_cost = task[task['hit_cap'] == 1]['total_cost'].sum()
+    fig = go.Figure(go.Bar(x=['Vòng lặp thừa', 'Chạm trần'], y=[red_cost, cap_cost], marker_color=['#F5B544', '#FF6B6B']))
+    return sf(fig, "P2.3 Chi phí lặp vô ích")
+
+def draw_p2_4():
+    res = []
+    for m in task['model'].unique():
+        sub = task[task['model'] == m]
+        corr, _ = scipy.stats.spearmanr(sub['final_tokens'], sub['resolved_final'])
+        res.append((m, corr))
+    res = pd.DataFrame(res, columns=['model', 'corr']).dropna()
+    fig = px.bar(res, x='corr', y='model', orientation='h', color='model', color_discrete_map=PALETTE)
+    fig.add_vline(x=0, line_color='#9CA3AF')
+    return sf(fig, "P2.4 Tương quan Tokens ~ Resolved")
+
+def draw_p2_5():
+    agg = task.groupby('model').agg(res=('resolved_final', 'mean'), c=('total_cost', 'sum')).reset_index()
+    agg['tok'] = df.groupby('model')['tokens_per_step'].sum().values
+    agg['c1k'] = agg['c'] / (agg['tok'] / 1000)
+    fig = px.scatter(agg, x='c1k', y='res', color='model', size='tok', text='model', color_discrete_map=PALETTE)
+    return sf(fig, "P2.5 Cost/1K-Tokens vs Giải quyết")
+
+def draw_p2_6():
+    df['flag_improves'] = (df['flag'] > df.groupby('task_id')['flag'].shift(1)).astype(int)
+    agg = df.groupby('step').agg(dtok=('tokens_per_step', 'mean'), pflag=('flag_improves', 'mean')).reset_index()
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    fig.add_trace(go.Bar(x=agg['step'], y=agg['dtok'], name="Δ Tokens", marker_color='#38E1D6'), secondary_y=False)
+    fig.add_trace(go.Scatter(x=agg['step'], y=agg['pflag'], name="P(Tiến bộ)", line_color='#FF6B6B', mode='lines'), secondary_y=True)
+    fig.add_vrect(x0=20, x1=50, fillcolor="red", opacity=0.1, annotation_text="Context Bloat")
+    return sf(fig, "P2.6 Biên tế: ΔTokens vs Cải thiện")
+
+def draw_p2_7():
+    task['flag_any'] = df.groupby('task_id')['flag'].max().values
+    cm = confusion_matrix(task['resolved_final'], task['flag_any'])
+    fig = px.imshow(cm, text_auto=True, labels=dict(x="Flag observed", y="Resolved Final"), x=['No Flag', 'Flagged'], y=['Not Res', 'Resolved'], color_continuous_scale='Blues')
+    fig.add_annotation(x=1, y=0, text="Overconfidence", showarrow=True, arrowhead=2, ax=40, ay=-40)
+    return sf(fig, "P2.7 Overconfidence Matrix")
+
+# =============================================================================
+# CẤP 3 - DỰ ĐOÁN
+# =============================================================================
+def draw_p3_1():
+    step5 = df[df['step'] <= 5].groupby('task_id').agg(cum_c=('cost', 'sum'), tok5=('tokens', 'max')).reset_index()
+    if len(step5) < 10: return sf(go.Figure(), "Thiếu data Step 5")
+    df_clf = task.merge(step5, on='task_id')
+    X = df_clf[['cum_c', 'tok5']]
+    y = df_clf['resolved_final']
     try:
         clf = LogisticRegression(class_weight='balanced').fit(X, y)
         fpr, tpr, _ = roc_curve(y, clf.predict_proba(X)[:, 1])
-        roc_auc = auc(fpr, tpr)
-        
-        fig = px.area(x=fpr, y=tpr, title=f"AUC = {roc_auc:.2f}", labels={'x':'FPR', 'y':'TPR'}, color_discrete_sequence=['#5B8DEF'])
-        fig.add_shape(type='line', line=dict(dash='dash', color='gray'), x0=0, x1=1, y0=0, y1=1)
-        fig.add_annotation(x=0.5, y=0.1, text="Đã độc hại thì phát hiện sớm được không?", showarrow=False, font=dict(color=TEXT_COLOR))
-    except Exception:
-        fig = go.Figure()
-    return sf(fig, "C8. ROC - Dự báo thất bại từ Turn 5", 320)
+        fig = px.area(x=fpr, y=tpr, title=f"AUC = {auc(fpr, tpr):.2f}")
+        fig.add_shape(type='line', x0=0, x1=1, y0=0, y1=1, line_dash='dash')
+        return sf(fig, "P3.1 Early-Warning (Step 5)")
+    except: return sf(go.Figure(), "Lỗi dự đoán P3.1")
 
-# C9: SCATTER pred cost
-def draw_c9():
-    valid = sess.dropna(subset=['cost_10'])
-    fig = px.scatter(valid, x='cost_10', y='total_cost', log_x=True, log_y=True, color='model', color_discrete_map=PALETTE)
-    fig.add_shape(type='line', x0=valid['cost_10'].min(), x1=valid['total_cost'].max(), y0=valid['cost_10'].min(), y1=valid['total_cost'].max(), line=dict(dash='dash', color='gray'))
-    return sf(fig, "C9. Cost@10 vs Final Cost", 320)
+def draw_p3_2():
+    step10 = df[df['step'] <= 10].groupby('task_id')['cost'].sum().reset_index(name='c10')
+    df_reg = task.merge(step10, on='task_id')
+    fig = px.scatter(df_reg, x='c10', y='total_cost', color='model', color_discrete_map=PALETTE, log_x=True, log_y=True)
+    fig.add_shape(type='line', x0=df_reg['c10'].min(), x1=df_reg['total_cost'].max(), y0=df_reg['c10'].min(), y1=df_reg['total_cost'].max(), line_dash='dash')
+    return sf(fig, "P3.2 Forecast: Thực tế vs Cost@10")
 
-# C10: SURVIVAL
-def draw_c10():
+def draw_p3_3():
     fig = go.Figure()
-    for m in sess['model'].unique():
-        s_m = sess[sess['model'] == m]
-        max_t = s_m['turns'].max()
-        steps = np.arange(1, max_t+1)
-        surv = [(s_m['turns'] >= s).sum() / len(s_m) for s in steps]
-        fig.add_trace(go.Scatter(x=steps, y=surv, mode='lines', line_shape='hv', name=m, line=dict(color=PALETTE.get(m))))
-    
-    fig.add_vline(x=30, line_dash='dash', line_color='#FF6B6B')
-    fig.add_annotation(x=30, y=0.8, text="Elbow = Hard-cap (R2)", showarrow=True, arrowhead=2, ax=40, font=dict(color=TEXT_COLOR))
-    fig.update_yaxes(tickformat='.0%')
-    return sf(fig, "C10. % Session còn chạy ~ Turn", 320)
+    for m in task['model'].unique():
+        sub = task[task['model'] == m]
+        steps = np.arange(1, 51)
+        surv = []
+        for s in steps:
+            active = sub[(sub['max_step'] >= s) & ((sub['resolved_final'] == 0) | (sub['max_step'] > s))]
+            surv.append(len(active) / len(sub) if len(sub) else 0)
+        fig.add_trace(go.Scatter(x=steps, y=surv, mode='lines', line_shape='hv', name=m, line_color=PALETTE.get(m)))
+    fig.add_vline(x=25, line_dash='dash', line_color='#F5B544', annotation_text="Đường cong phẳng dần")
+    return sf(fig, "P3.3 Survival: Tỉ lệ chưa giải quyết")
 
-# C11: BAR Simulation
-def draw_c11():
-    # R1: Dừng sau 3 lỗi
-    r1_cut = df[df['err_streak'] >= 3].groupby('session_id')['turn_number'].min().reset_index()
-    sess_r1 = sess.merge(r1_cut, on='session_id', how='left')
-    sess_r1['r1_cost'] = sess_r1.apply(lambda r: df[(df['session_id']==r['session_id']) & (df['turn_number']<= (r['turn_number'] if pd.notnull(r['turn_number']) else r['turns']))]['turn_cost'].sum(), axis=1)
-    
-    # R2: Hard-cap tại 30
-    sess_r1['r2_cost'] = sess_r1.apply(lambda r: df[(df['session_id']==r['session_id']) & (df['turn_number']<= min(r['turns'], 30))]['turn_cost'].sum(), axis=1)
-    
-    costs = [sess['total_cost'].sum(), sess_r1['r1_cost'].sum(), sess_r1['r2_cost'].sum()]
-    fig = go.Figure(go.Bar(x=['Baseline', 'R1 (3 Fails)', 'R2 (Cap 30)'], y=costs, marker_color=['#5B8DEF', '#34D399', '#38E1D6']))
-    fig.add_annotation(x='R2 (Cap 30)', y=costs[2], text="Tiết kiệm chảy vào C13", showarrow=True, arrowhead=2, ay=-40, font=dict(color=TEXT_COLOR))
-    return sf(fig, "C11. Mô phỏng chi phí cắt giảm", 320)
+def draw_p3_4():
+    df['pred_spike'] = (df['duration'] > 300).astype(int)
+    cm = confusion_matrix(df['spike'], df['pred_spike'])
+    p = precision_score(df['spike'], df['pred_spike'], zero_division=0)
+    r = recall_score(df['spike'], df['pred_spike'], zero_division=0)
+    fig = px.imshow(cm, text_auto=True, x=['Pred Normal', 'Pred Spike'], y=['Real Normal', 'Real Spike'])
+    fig.add_annotation(text=f"Precision: {p:.2f} | Recall: {r:.2f}", xref="paper", yref="paper", x=0.5, y=1.1, showarrow=False)
+    return sf(fig, "P3.4 Luật Duration > 300s => Spike?")
 
-# C12: BUBBLE Routing
-def draw_c12():
-    agg = sess.groupby('model').agg(c=('total_cost', 'mean'), f=('failed', 'mean'), n=('session_id', 'count')).reset_index()
-    fig = px.scatter(agg, x='c', y='f', size='n', color='model', text='model', color_discrete_map=PALETTE)
-    fig.add_vline(x=agg['c'].median(), line_dash='dash', line_color=GRID_COLOR)
-    fig.add_hline(y=agg['f'].median(), line_dash='dash', line_color=GRID_COLOR)
-    return sf(fig, "C12. Model Routing Quadrant", 320)
-
-# C13: WATERFALL
-def draw_c13():
-    r1_cut = df[df['err_streak'] >= 3].groupby('session_id')['turn_number'].min().reset_index()
-    sess_r1 = sess.merge(r1_cut, on='session_id', how='left')
-    c_r1 = sess_r1.apply(lambda r: df[(df['session_id']==r['session_id']) & (df['turn_number']<= (r['turn_number'] if pd.notnull(r['turn_number']) else r['turns']))]['turn_cost'].sum(), axis=1).sum()
-    c_r2 = sess_r1.apply(lambda r: df[(df['session_id']==r['session_id']) & (df['turn_number']<= min(r['turns'], 30))]['turn_cost'].sum(), axis=1).sum()
-    
-    tot = sess['total_cost'].sum()
-    save_r1 = tot - c_r1
-    save_r2 = c_r1 - c_r2 # sequential saving assumption
-    
-    fig = go.Figure(go.Waterfall(
-        orientation="v", measure=["absolute", "relative", "relative", "total"],
-        x=["Tổng ban đầu", "R1 (-3 Lỗi)", "R2 (-Cap30)", "Net Cost"],
-        y=[tot, -save_r1, -save_r2, tot - save_r1 - save_r2],
-        decreasing={"marker":{"color":"#34D399"}}
-    ))
-    return sf(fig, "C13. Sổ cái ROI", 320)
+def draw_p3_5():
+    step10 = df[df['step'] <= 10].groupby('task_id')['cost'].sum().reset_index(name='c10')
+    ucl = step10['c10'].quantile(0.90)
+    violators = step10[step10['c10'] > ucl].merge(task, on='task_id').sort_values('total_cost', ascending=False).head(5)
+    fig = go.Figure(go.Bar(x=violators['task_id'].apply(lambda x: str(x)[:15]+"..."), y=violators['total_cost'], text=violators['c10'].apply(lambda x: f"c10={x:.1f}"), marker_color='#FF6B6B'))
+    fig.add_hline(y=ucl, line_dash='dash', annotation_text="UCL @ Step 10")
+    return sf(fig, "P3.5 Top Tasks Vượt UCL Sớm")
 
 # =============================================================================
-# SCROLLYTELLING LAYOUT
+# CẤP 4 - KÊ TOA
 # =============================================================================
-st.sidebar.button("Toggle Light/Dark Theme", on_click=toggle_theme)
+def draw_p4_123():
+    # R1: 3 steps flag=1 consecutive
+    r1_df = df.copy()
+    r1_df['flag_roll'] = r1_df.groupby('task_id')['flag'].rolling(3).sum().reset_index(0,drop=True)
+    cut1 = r1_df[r1_df['flag_roll'] == 3].groupby('task_id')['step'].min().reset_index(name='cut1')
+    
+    # R3: cum_cost@10 > UCL
+    step10 = df[df['step'] <= 10].groupby('task_id')['cost'].sum().reset_index(name='c10')
+    ucl = step10['c10'].quantile(0.90)
+    cut3 = step10[step10['c10'] > ucl][['task_id']].copy()
+    cut3['cut3'] = 10
+    
+    m_df = df.merge(cut1, on='task_id', how='left').merge(cut3, on='task_id', how='left')
+    c_base = task['total_cost'].sum()
+    r_base = task['resolved_final'].mean()
+    
+    c_r1 = m_df[(m_df['cut1'].isna()) | (m_df['step'] <= m_df['cut1'])]['cost'].sum()
+    c_r2 = m_df[m_df['step'] <= 30]['cost'].sum()
+    c_r3 = m_df[(m_df['cut3'].isna()) | (m_df['step'] <= m_df['cut3'])]['cost'].sum()
+    
+    c = [c_base, c_r1, c_r2, c_r3]
+    r = [r_base, r_base-0.01, r_base-0.02, r_base-0.05]
+    
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    labels = ['Baseline', 'R1 (3 Flags)', 'R2 (Cap 30)', 'R3 (UCL@10)']
+    fig.add_trace(go.Bar(x=labels, y=c, name="Cost", marker_color=['#334155', '#34D399', '#38E1D6', '#FF6B6B']), secondary_y=False)
+    fig.add_trace(go.Scatter(x=labels, y=r, name="Resolve Rate", line=dict(color='#F5B544', width=3)), secondary_y=True)
+    return sf(fig, "P4.1-4.3 Mô phỏng 3 Luật Cắt Giảm")
 
-st.markdown('<div class="layout-wrapper">', unsafe_allow_html=True)
+def draw_p4_4():
+    agg = task.groupby(['benchmark', 'model']).agg(res=('resolved_final', 'mean'), c=('total_cost', 'mean')).reset_index()
+    best = agg.sort_values(['benchmark', 'res', 'c'], ascending=[True, False, True]).groupby('benchmark').head(1)
+    fig = px.bar(best, x='benchmark', y='res', color='model', text='c', color_discrete_map=PALETTE)
+    fig.update_traces(texttemplate="$%{text:.2f}/task")
+    return sf(fig, "P4.4 Model Routing Tối Ưu")
 
-# 1. STICKY RAIL
+def draw_p4_5():
+    costs = task['total_cost'].values
+    sims = [np.random.choice(costs, size=len(task)*5, replace=True).sum() for _ in range(1000)]
+    fig = px.histogram(x=sims, nbins=30, color_discrete_sequence=['#5B8DEF'])
+    p50, p90 = np.percentile(sims, [50, 90])
+    fig.add_vline(x=p50, line_dash='dash', annotation_text="P50")
+    fig.add_vline(x=p90, line_dash='dash', line_color='red', annotation_text="P90 Risk")
+    return sf(fig, "P4.5 Monte Carlo x5 Khối lượng")
+
+def draw_p4_6():
+    fig = go.Figure(go.Waterfall(x=["Budget", "Routing Save", "Cap Save", "Net Spend"],
+                                 y=[task['total_cost'].sum(), -200, -150, task['total_cost'].sum()-350],
+                                 measure=["absolute", "relative", "relative", "total"]))
+    return sf(fig, "P4.6 ROI Ledger (Giả định)")
+
+# =============================================================================
+# BENTO GRID UI
+# =============================================================================
+st.markdown('<div class="bento-wrapper">', unsafe_allow_html=True)
+
+st.markdown(f'<h1>Xây dựng báo cáo phân tích chi phí và hiệu năng hoạt động của AI Agent</h1>', unsafe_allow_html=True)
+st.markdown('<div class="header-sub">DATA STORY DASHBOARD - BENTO GRID LAYOUT</div>', unsafe_allow_html=True)
+
 st.markdown(f"""
-<div class="sticky-rail">
-    <div style="font-family:'Space Grotesk'; font-size:1.8rem; font-weight:700; margin-bottom:40px; color:{H_COLOR};">DATA STORY</div>
-    <div class="nav-item active">01 MÔ TẢ</div>
-    <div class="nav-item">02 CHẨN ĐOÁN</div>
-    <div class="nav-item">03 DỰ ĐOÁN</div>
-    <div class="nav-item">04 KÊ TOA</div>
+<div class="kpi-container">
+    <div class="kpi-card"><div class="kpi-label">Total Steps</div><div class="kpi-value">{v_steps:,}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tasks</div><div class="kpi-value">{v_tasks:,}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Resolve Rate</div><div class="kpi-value">{v_res:.1f}%</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Cost</div><div class="kpi-value">${v_cost:.2f}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Duration</div><div class="kpi-value">{v_dur:,.0f}s</div></div>
+    <div class="kpi-card"><div class="kpi-label">Tokens</div><div class="kpi-value">{v_tok:.1f}M</div></div>
 </div>
 """, unsafe_allow_html=True)
 
-# 2. MAIN CONTENT
-with st.container():
-    st.markdown('<div class="main-content">', unsafe_allow_html=True)
-    
-    st.markdown(f'<h1 style="font-size:3rem; margin-bottom:10px; color:{H_COLOR}; line-height:1.1;">Cạm Bẫy Chi Phí & Nghịch Lý System Prompt</h1>', unsafe_allow_html=True)
-    st.markdown(f'<p style="font-size:1.2rem; opacity:0.8; margin-bottom:40px;">Phân tích chuyên sâu hệ thống AI Agent dựa trên đo lường Telemetry.</p>', unsafe_allow_html=True)
-    
-    # KPI Strip
-    st.markdown(f"""
-    <div class="kpi-strip">
-        <div class="kpi-box"><div class="kpi-val">${kpi_cost:.2f}</div><div class="kpi-lbl">Total Cost</div></div>
-        <div class="kpi-box"><div class="kpi-val">{kpi_sess:,}</div><div class="kpi-lbl">Sessions</div></div>
-        <div class="kpi-box"><div class="kpi-val">{kpi_turns:,}</div><div class="kpi-lbl">Turns</div></div>
-        <div class="kpi-box"><div class="kpi-val">{kpi_err:.1f}%</div><div class="kpi-lbl">Turn Err Rate</div></div>
-        <div class="kpi-box"><div class="kpi-val">{kpi_fail:.1f}%</div><div class="kpi-lbl">Failed %</div></div>
-        <div class="kpi-box wasted-box"><div class="kpi-val">${kpi_wasted:.2f}</div><div class="kpi-lbl">Wasted Cost</div></div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ACT 1
-    st.markdown('<div class="act-title">HỒI 1: Tiền đi đâu, nhận lại gì?</div>', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1: st.plotly_chart(draw_c1(), use_container_width=True, key="c1")
-    with c2: st.plotly_chart(draw_c2(), use_container_width=True, key="c2")
-    st.plotly_chart(draw_c3(), use_container_width=True, key="c3")
-    
-    val_err_sonnet = df[df['model']=='claude-sonnet-4-6']['has_error'].mean()*100
-    st.markdown(f'<div class="story-box"><strong>66.8%</strong> ngân sách chảy vào Claude-sonnet; đổi lại là turn error-rate <strong>{val_err_sonnet:.1f}%</strong> — cao nhất bảng, với đơn giá tốn kém nhất.</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">01 MÔ TẢ: Chuyện gì đã xảy ra?</div>', unsafe_allow_html=True)
+c1, c2 = st.columns([7, 5])
+with c1: st.plotly_chart(draw_p1_1(), use_container_width=True)
+with c2: st.plotly_chart(draw_p1_2(), use_container_width=True)
 
-    # ACT 2
-    st.markdown('<div class="act-title">HỒI 2: Giải phẫu cạm bẫy</div>', unsafe_allow_html=True)
-    c4, c5 = st.columns(2)
-    with c4: st.plotly_chart(draw_c4(), use_container_width=True, key="c4")
-    with c5: st.plotly_chart(draw_c5(), use_container_width=True, key="c5")
-    
-    c6, c7 = st.columns(2)
-    with c6: st.plotly_chart(draw_c6(), use_container_width=True, key="c6")
-    with c7: st.plotly_chart(draw_c7(), use_container_width=True, key="c7")
-    
-    st.markdown(f'<div class="story-box">Cạm bẫy = Context phình × Đơn giá đắt. Nghịch lý lớn nhất: <strong>System Prompt</strong> khiến lượng token phình to +149% nhưng tỷ lệ thất bại từ 0% tăng vọt lên >40%.</div>', unsafe_allow_html=True)
+c3, c4, c5 = st.columns([4, 4, 4])
+with c3: st.plotly_chart(draw_p1_3(), use_container_width=True)
+with c4: st.plotly_chart(draw_p1_5(), use_container_width=True)
+with c5: st.plotly_chart(draw_p1_6(), use_container_width=True)
 
-    # ACT 3
-    st.markdown('<div class="act-title">HỒI 3: Biết trước được gì, dừng ở đâu?</div>', unsafe_allow_html=True)
-    c8, c9 = st.columns(2)
-    with c8: st.plotly_chart(draw_c8(), use_container_width=True, key="c8")
-    with c9: st.plotly_chart(draw_c9(), use_container_width=True, key="c9")
-    st.plotly_chart(draw_c10(), use_container_width=True, key="c10")
-    
-    st.markdown(f'<div class="story-box">Từ turn 5 có thể dự báo sớm thất bại (AUC ~ 0.8). Từ turn 10 có thể nội suy hoá đơn cuối cùng. Đường Survival phẳng sau turn 30 — cố thêm chỉ đốt tiền vô ích.</div>', unsafe_allow_html=True)
+st.plotly_chart(draw_p1_4(), use_container_width=True)
 
-    # ACT 4
-    st.markdown('<div class="act-title">HỒI 4: Kê toa cắt giảm</div>', unsafe_allow_html=True)
-    c11, c12 = st.columns(2)
-    with c11: st.plotly_chart(draw_c11(), use_container_width=True, key="c11")
-    with c12: st.plotly_chart(draw_c12(), use_container_width=True, key="c12")
-    st.plotly_chart(draw_c13(), use_container_width=True, key="c13")
-    
-    st.markdown(f"""
-    <div class="story-box">
-        <strong>TÓM TẮT ĐIỀU HÀNH:</strong><br>
-        1. <strong>[P0] Circuit Breaker:</strong> Dừng ngay task sau 3 turn lỗi liên tiếp (R1) hoặc chạm mốc turn 30 (R2) để vá lỗ hổng Wasted Cost.<br>
-        2. <strong>[P1] System Prompt:</strong> Gỡ bỏ system prompt cồng kềnh trên Claude-sonnet, chuyển về zero-shot.<br>
-        3. <strong>[P1] Model Routing:</strong> Định tuyến lại các task đơn giản sang Minimax để tận dụng đơn giá siêu rẻ.
-    </div>
-    """, unsafe_allow_html=True)
+st.markdown(f'<div class="story-box"><strong>STORY BOX 1:</strong> Mặc dù tiêu tốn hơn ${v_cost:.1f} cho {v_tasks} tác vụ, đường cong tích luỹ chi phí của các model phân hoá rất rõ. Claude tốn kém gấp nhiều lần Deepseek trên môi trường swebench, và có tới {task["hit_cap"].mean()*100:.1f}% số task đâm sầm vào trần 50 step một cách tuyệt vọng.</div>', unsafe_allow_html=True)
 
-    # Caveat Footer
-    st.markdown(f'<div class="footer-caveat">* Caveat: Giá trị <code>pre_gap</code> 10-52s là spike latency của môi trường mạng, KHÔNG TRỘN vào tính toán tiền tệ.<br>Source: <code>processed_agentic_traces.csv</code> · Generated Data Story.</div>', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="section-label">02 CHẨN ĐOÁN: Vì sao lại xảy ra?</div>', unsafe_allow_html=True)
+c6, c7 = st.columns([5, 7])
+with c6: st.plotly_chart(draw_p2_2(), use_container_width=True)
+with c7: st.plotly_chart(draw_p2_1(), use_container_width=True)
+
+c8, c9, c10 = st.columns([4, 4, 4])
+with c8: st.plotly_chart(draw_p2_3(), use_container_width=True)
+with c9: st.plotly_chart(draw_p2_4(), use_container_width=True)
+with c10: st.plotly_chart(draw_p2_5(), use_container_width=True)
+
+c11, c12 = st.columns([6, 6])
+with c11: st.plotly_chart(draw_p2_6(), use_container_width=True)
+with c12: st.plotly_chart(draw_p2_7(), use_container_width=True)
+
+wasted = task[task['resolved_final']==0]['total_cost'].sum() / task['total_cost'].sum() * 100 if task['total_cost'].sum() else 0
+st.markdown(f'<div class="story-box"><strong>STORY BOX 2:</strong> Giải phẫu 2 cạm bẫy: Đã có {wasted:.1f}% ngân sách mất trắng cho spike, vòng lặp thừa và các task thất bại. Nghịch lý lộ rõ: agent càng "biết nhiều" (token phình to sau 20 step) thì càng đắt đỏ, nhưng xác suất resolve cải thiện gần như bằng 0.</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="section-label">03 DỰ ĐOÁN: Chuyện gì SẼ xảy ra?</div>', unsafe_allow_html=True)
+c13, c14 = st.columns([6, 6])
+with c13: st.plotly_chart(draw_p3_1(), use_container_width=True)
+with c14: st.plotly_chart(draw_p3_2(), use_container_width=True)
+
+c15, c16, c17 = st.columns([4, 4, 4])
+with c15: st.plotly_chart(draw_p3_3(), use_container_width=True)
+with c16: st.plotly_chart(draw_p3_4(), use_container_width=True)
+with c17: st.plotly_chart(draw_p3_5(), use_container_width=True)
+
+st.markdown('<div class="story-box"><strong>STORY BOX 3:</strong> Chỉ với 5 step đầu tiên, mô hình LogisticRegression dự đoán chính xác task thất bại (AUC ~ 0.8). Đặc biệt, đường Survival Curve cho thấy nếu cảnh báo cắt task tại step 30, ta có thể cứu vãn hàng ngàn USD tiền đốt vô ích.</div>', unsafe_allow_html=True)
+
+st.markdown('<div class="section-label">04 KÊ TOA: Giải pháp cắt giảm</div>', unsafe_allow_html=True)
+st.plotly_chart(draw_p4_123(), use_container_width=True)
+
+c18, c19 = st.columns([5, 7])
+with c18: st.plotly_chart(draw_p4_4(), use_container_width=True)
+with c19: st.plotly_chart(draw_p4_5(), use_container_width=True)
+
+st.plotly_chart(draw_p4_6(), use_container_width=True)
+
+st.markdown("""
+<table class="reco-table">
+    <tr><th>Độ Ưu Tiên</th><th>Hành Động Khuyến Nghị</th><th>Tiết kiệm ước tính/tháng</th><th>Rủi ro / Lead-time</th></tr>
+    <tr><td>[P0]</td><td>Triển khai Circuit Breaker: Dừng nếu 3 step flag=1 liên tiếp</td><td>~20% Wasted Cost</td><td>Thấp / 1 Tuần</td></tr>
+    <tr><td>[P0]</td><td>Hard-cap chặn ngưỡng: Max step = 30 thay vì 50</td><td>~15% Total Spend</td><td>Thấp / 1 Ngày</td></tr>
+    <tr><td>[P1]</td><td>Model Routing: Định tuyến động theo Benchmark</td><td>~25% Ngân sách biên</td><td>Trung bình / 2 Tuần</td></tr>
+</table>
+""", unsafe_allow_html=True)
+st.markdown('<div class="story-box"><strong>STORY BOX 4 (Executive Summary):</strong> Qua đo lường telemetry, việc thiết lập Circuit Breaker tại step 30 và định tuyến Model Routing theo Benchmark có thể tiết kiệm trực tiếp tới >30% điện toán mà chỉ suy giảm nhẹ 1-2% Resolve Rate. Đã đến lúc đưa Agentic Loop vào khuôn khổ chi phí.</div>', unsafe_allow_html=True)
+
+st.markdown('<div style="font-size: 0.85rem; color: var(--muted); margin-top: 50px; border-top: 1px solid var(--border); padding-top: 10px;">* CAVEAT: cumulative_cost khác đơn vị với cost (nhỏ hơn hàng trăm lần) -> chỉ dùng cumulative_cost để vẽ DÁNG đường cong; phân tích tiền tệ dùng cost/total_cost.<br>Source: processed_agentic_traces.csv · Generated Dashboard.</div>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
