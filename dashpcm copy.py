@@ -1118,7 +1118,7 @@ with tab3:
             
             X = ml_data_encoded[features]
             y_clf = ml_data_encoded["resolved"]
-            y_reg = ml_data_encoded["total_cost"]
+            y_reg = ml_data_encoded["n_turns"]
             
             clf = RandomForestClassifier(n_estimators=100, max_depth=5, random_state=42)
             clf.fit(X, y_clf)
@@ -1126,8 +1126,8 @@ with tab3:
             reg = RandomForestRegressor(n_estimators=100, max_depth=5, random_state=42)
             reg.fit(X, y_reg)
             
-            ml_data_encoded["predicted_cost"] = reg.predict(X)
-            ml_data_encoded["cost_error"] = ml_data_encoded["predicted_cost"] - ml_data_encoded["total_cost"]
+            ml_data_encoded["predicted_turns"] = reg.predict(X)
+            ml_data_encoded["turns_error"] = ml_data_encoded["predicted_turns"] - ml_data_encoded["n_turns"]
             
             feat_names = [f.replace("benchmark_", "Bench: ").replace("is_system_prompt_present", "Có Prompt").replace("t5_tokens", "Tokens (5 turns đầu)").replace("t5_cost", "Chi phí (5 turns đầu)").replace("model_", "AI: ") for f in features]
             
@@ -1149,7 +1149,7 @@ with tab3:
             
             with ml_r1_c2:
                 with get_card():
-                    st.markdown('<div class="panel-title">Biểu đồ 3.6: Yếu tố ảnh hưởng đến Tổng Chi Phí</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="panel-title">Biểu đồ 3.6: Yếu tố ảnh hưởng Số bước thực thi</div>', unsafe_allow_html=True)
                     importances_reg = reg.feature_importances_
                     fi_reg_df = pd.DataFrame({"Feature": feat_names, "Importance": importances_reg}).sort_values("Importance", ascending=True)
                     fig_fi_reg = px.bar(fi_reg_df, x="Importance", y="Feature", orientation='h')
@@ -1157,35 +1157,9 @@ with tab3:
                     pls(fig_fi_reg, h=270, ml=120)
                     fig_fi_reg.update_layout(xaxis_title="Mức độ quan trọng (%)", yaxis_title="", xaxis_tickformat=".0%")
                     st.plotly_chart(fig_fi_reg, key="ml_fi_reg", use_container_width=True, config={"displayModeBar":False})
-                    st.markdown(f'<div class="cap">Loại Benchmark và Tốc độ tiêu thụ Token đầu phiên quyết định hóa đơn cuối.</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="cap">Loại Benchmark và Tốc độ tiêu thụ Token đầu phiên quyết định số bước thực thi.</div>', unsafe_allow_html=True)
             
-            ml_r2_c1, ml_r2_c2 = st.columns([6, 6])
-            with ml_r2_c1:
-                with get_card():
-                    st.markdown('<div class="panel-title">Biểu đồ 3.7: Chi phí Thực tế vs Dự báo (Học máy)</div>', unsafe_allow_html=True)
-                    fig_reg = px.scatter(ml_data_encoded, x="total_cost", y="predicted_cost", color="resolved",
-                                         color_discrete_map={1: CLR_POS, 0: CLR_NEG},
-                                         labels={"total_cost": "Thực tế ($)", "predicted_cost": "Dự báo ($)", "resolved": "Thực tế"})
-                    
-                    max_val = max(ml_data_encoded["total_cost"].max(), ml_data_encoded["predicted_cost"].max())
-                    fig_reg.add_shape(type="line", x0=0, y0=0, x1=max_val, y1=max_val,
-                                      line=dict(color="rgba(255,255,255,0.35)", width=2, dash="dash"))
-                    
-                    pls(fig_reg, h=270)
-                    st.plotly_chart(fig_reg, key="ml_reg_scatter_new", use_container_width=True, config={"displayModeBar":False})
-                    st.markdown(f'<div class="cap">Dữ liệu bám sát đường chéo: Mô hình dự báo rất sát chi phí thực tế ngay từ Turn 5.</div>', unsafe_allow_html=True)
-            
-            with ml_r2_c2:
-                with get_card():
-                    st.markdown('<div class="panel-title">Biểu đồ 3.8: Phân bố Sai số Dự báo Chi phí</div>', unsafe_allow_html=True)
-                    fig_err = px.histogram(ml_data_encoded, x="cost_error", nbins=24,
-                                           color_discrete_sequence=["#06b6d4"])
-                    fig_err.add_vline(x=0, line_dash="dash", line_color=CLR_POS, line_width=2,
-                                      annotation_text="Sai số 0 (Chuẩn)", annotation_font=dict(size=10, color=CLR_POS))
-                    pls(fig_err, h=270)
-                    fig_err.update_layout(xaxis_title="Sai số: Dự báo - Thực tế ($)", yaxis_title="Số Phiên", xaxis_tickformat="$,.2f")
-                    st.plotly_chart(fig_err, key="ml_err_hist", use_container_width=True, config={"displayModeBar":False})
-                    st.markdown(f'<div class="cap">Sai số tập trung hẹp quanh mốc $0.00, khẳng định độ tin cậy để tự động hóa ngân sách.</div>', unsafe_allow_html=True)
+
         else:
             st.markdown('<div class="empty-state">Không đủ dữ liệu huấn luyện ML. Hãy điều chỉnh bộ lọc để có ít nhất 20 phiên.</div>', unsafe_allow_html=True)
     except Exception as e:
